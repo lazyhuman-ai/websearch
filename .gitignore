@@ -1,0 +1,10 @@
+.DS_Store
+.env
+.pycache/
+__pycache__/
+*.py[cod]
+
+.vscode/
+logs/
+
+research_outputs/
