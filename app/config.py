@@ -1,73 +1,68 @@
 from functools import lru_cache
+from typing import Any
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Settings(BaseSettings):
-    searxng_base_url: str = Field(
-        default="http://127.0.0.1:8080",
-        validation_alias=AliasChoices("SEARXNG_BASE_URL"),
-    )
-    searxng_categories: str = Field(
-        default="general,news",
-        validation_alias=AliasChoices("SEARXNG_CATEGORIES"),
-    )
-    search_max_results: int = Field(default=5, validation_alias=AliasChoices("SEARCH_MAX_RESULTS"))
-    search_read_results: int = Field(default=3, validation_alias=AliasChoices("SEARCH_READ_RESULTS"))
-    rerank_top_k: int = Field(default=5, validation_alias=AliasChoices("RERANK_TOP_K"))
-    request_timeout_seconds: float = Field(default=10.0, validation_alias=AliasChoices("REQUEST_TIMEOUT_SECONDS"))
-    max_queries_per_task: int = Field(default=3, validation_alias=AliasChoices("MAX_QUERIES_PER_TASK"))
-    max_results_per_query: int = Field(default=5, validation_alias=AliasChoices("MAX_RESULTS_PER_QUERY"))
-    request_interval_seconds: float = Field(default=2.0, validation_alias=AliasChoices("REQUEST_INTERVAL_SECONDS"))
-    max_concurrent_searches: int = Field(default=1, validation_alias=AliasChoices("MAX_CONCURRENT_SEARCHES"))
-    cache_ttl_seconds: int = Field(default=3600, validation_alias=AliasChoices("CACHE_TTL_SECONDS"))
-    max_document_chars: int = Field(default=12000, validation_alias=AliasChoices("MAX_DOCUMENT_CHARS"))
-    agent_max_steps: int = Field(default=6, validation_alias=AliasChoices("AGENT_MAX_STEPS"))
-    searxng_auto_start: bool = Field(default=True, validation_alias=AliasChoices("SEARXNG_AUTO_START"))
-    searxng_startup_timeout_seconds: float = Field(
-        default=30.0,
-        validation_alias=AliasChoices("SEARXNG_STARTUP_TIMEOUT_SECONDS"),
-    )
-    searxng_compose_dir: str = Field(
-        default=".",
-        validation_alias=AliasChoices("SEARXNG_COMPOSE_DIR"),
-    )
-    searxng_service_name: str = Field(
-        default="searxng",
-        validation_alias=AliasChoices("SEARXNG_SERVICE_NAME"),
-    )
-    user_agent: str = Field(
-        default="websearch-mvp/0.2 (+https://localhost)",
-        validation_alias=AliasChoices("USER_AGENT"),
-    )
-    llm_provider: str = Field(
-        default="mock",
-        validation_alias=AliasChoices("LLM_PROVIDER", "OPENAI_PROVIDER"),
-    )
-    llm_base_url: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("LLM_BASE_URL", "OPENAI_BASE_URL"),
-    )
-    llm_api_key: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"),
-    )
-    llm_model: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("LLM_MODEL", "OPENAI_MODEL"),
-    )
-    llm_temperature: float = Field(default=0.2, validation_alias=AliasChoices("LLM_TEMPERATURE"))
-    llm_max_tokens: int = Field(default=1200, validation_alias=AliasChoices("LLM_MAX_TOKENS"))
-    log_level: str = Field(default="INFO", validation_alias=AliasChoices("LOG_LEVEL"))
-    log_payload_chars: int = Field(default=1200, validation_alias=AliasChoices("LOG_PAYLOAD_CHARS"))
-    log_llm_raw: bool = Field(default=False, validation_alias=AliasChoices("LOG_LLM_RAW"))
-    log_dir: str = Field(default="logs", validation_alias=AliasChoices("LOG_DIR"))
-    log_file_name: str = Field(default="websearch.log", validation_alias=AliasChoices("LOG_FILE_NAME"))
-    log_file_max_bytes: int = Field(default=5_000_000, validation_alias=AliasChoices("LOG_FILE_MAX_BYTES"))
-    log_file_backup_count: int = Field(default=3, validation_alias=AliasChoices("LOG_FILE_BACKUP_COUNT"))
+def _csv_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []
 
+
+class Settings(BaseSettings):
+    default_language: str = Field(default="en-US", validation_alias=AliasChoices("SEARCH_DEFAULT_LANGUAGE"))
+    default_category: str = Field(default="general", validation_alias=AliasChoices("SEARCH_DEFAULT_CATEGORY"))
+    default_time_range: str = Field(default="any", validation_alias=AliasChoices("SEARCH_DEFAULT_TIME_RANGE"))
+    search_max_results: int = Field(default=5, validation_alias=AliasChoices("SEARCH_MAX_RESULTS"))
+    max_results_per_query: int = Field(default=10, validation_alias=AliasChoices("MAX_RESULTS_PER_QUERY"))
+    request_timeout_seconds: float = Field(default=12.0, validation_alias=AliasChoices("REQUEST_TIMEOUT_SECONDS"))
+    search_engine_timeout_seconds: float = Field(default=8.0, validation_alias=AliasChoices("SEARCH_ENGINE_TIMEOUT_SECONDS"))
+    search_total_timeout_seconds: float = Field(default=15.0, validation_alias=AliasChoices("SEARCH_TOTAL_TIMEOUT_SECONDS"))
+    search_ban_seconds: float = Field(default=120.0, validation_alias=AliasChoices("SEARCH_BAN_SECONDS"))
+    search_user_agent_rotation: bool = Field(default=True, validation_alias=AliasChoices("SEARCH_USER_AGENT_ROTATION"))
+    search_strip_trackers: bool = Field(default=True, validation_alias=AliasChoices("SEARCH_STRIP_TRACKERS"))
+    search_read_results: int = Field(default=3, validation_alias=AliasChoices("SEARCH_READ_RESULTS"))
+    request_interval_seconds: float = Field(default=1.0, validation_alias=AliasChoices("REQUEST_INTERVAL_SECONDS"))
+    cache_ttl_seconds: int = Field(default=900, validation_alias=AliasChoices("CACHE_TTL_SECONDS"))
+    max_document_chars: int = Field(default=12000, validation_alias=AliasChoices("MAX_DOCUMENT_CHARS"))
+    user_agent: str = Field(default="websearch-minimal/1.0 (+https://localhost)", validation_alias=AliasChoices("USER_AGENT"))
+    general_engines: list[str] = Field(
+        default_factory=lambda: ["google_web", "bing_web", "brave_web", "duckduckgo_lite"],
+        validation_alias=AliasChoices("SEARCH_GENERAL_ENGINES"),
+    )
+    news_engines: list[str] = Field(
+        default_factory=lambda: ["google_web", "bing_web", "google_news_rss", "duckduckgo_lite"],
+        validation_alias=AliasChoices("SEARCH_NEWS_ENGINES"),
+    )
+    reference_engines: list[str] = Field(
+        default_factory=lambda: ["google_web", "bing_web", "duckduckgo_lite", "wikipedia"],
+        validation_alias=AliasChoices("SEARCH_REFERENCE_ENGINES"),
+    )
+    academic_engines: list[str] = Field(
+        default_factory=lambda: ["google_web", "bing_web", "arxiv"],
+        validation_alias=AliasChoices("SEARCH_ACADEMIC_ENGINES"),
+    )
+    code_engines: list[str] = Field(
+        default_factory=lambda: ["google_web", "bing_web", "duckduckgo_lite", "stackoverflow", "github"],
+        validation_alias=AliasChoices("SEARCH_CODE_ENGINES"),
+    )
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
+
+    @field_validator(
+        "general_engines",
+        "news_engines",
+        "reference_engines",
+        "academic_engines",
+        "code_engines",
+        mode="before",
+    )
+    @classmethod
+    def parse_engine_lists(cls, value: Any) -> Any:
+        return _csv_list(value) or value
 
 
 @lru_cache(maxsize=1)
