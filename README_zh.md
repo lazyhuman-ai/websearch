@@ -1,16 +1,20 @@
 # Websearch
 
+[English](./README.md) | [简体中文](./README_zh.md)
+
+[项目初衷](#项目初衷) | [当前状态](#当前状态) | [核心架构](#核心架构) | [Roadmap](#roadmap) | [快速开始](#快速开始) | [配置方式](#配置方式) | [已知限制](#已知限制)
+
 一个面向 Agent 的轻量级多引擎 Web Search 基础设施。
 
-这个项目不是为了做一个“终端搜索脚本”，而是为了给你在搭建自己的 Agent Framework、Tool Runtime、Orchestrator 或 Research Stack 时，提供一个可自托管、可观察、可替换的 `websearch tool backend`。
+这个项目为了给在搭建 Agent Framework、Tool Runtime、Orchestrator 或 Research Stack 时，提供一个轻量级，免部署，可修改的 `websearch tool backend`。
 
-它只专注于一件事：
+它只包含必要功能：
 
 - 接收一次搜索请求
 - 同时调用多个上游搜索引擎
 - 把不同格式的结果统一成同一种结构
 - 做去重、排序和清洗
-- 按 Agent 更容易消费的方式返回结果
+- 按 Agent 更容易理解的方式返回结果
 - 在需要时再附加 URL 解析和正文提取
 
 ## 项目初衷
@@ -19,55 +23,33 @@
 
 很多 Agent 系统都需要一个 Web Search Tool，但常见方案都有明显取舍：
 
-- 模型原生 Web Search 很方便，但常常是黑盒
-- Browser Automation 功能最强，但成本高、速度慢
+- 使用提供商 API 直接 Web Search 很方便，但常常是黑盒，且需求时间金钱成本
+- Browser Automation 功能最强，但实现复杂，速度慢
 - 单一搜索引擎接入简单，但容易脆弱和受限
-- 大型 Metasearch 系统很全面，但往往太重，不适合直接嵌进 Agent Runtime
 
-于是这个项目的目标就变得很明确：
+于是就有了这个项目：
 
 做一个开放、可改、可解释的 Web Search Backend，作为 Agent 的备选工具层存在。
 
 它适合：
 
-- 作为 Agent Framework 里的 fallback websearch tool
+- 作为 Agent Framework 里的 (自定义) websearch tool
 - 作为你自己封装工具 API 的底层搜索后端
-- 作为研究 ranking、routing、content extraction 的实验平台
-- 作为避免强绑定某个商业搜索接口的自托管替代方案
+- 作为避免强绑定某个商业搜索接口的免部署的轻量级替代方案
 
 ## 当前状态
 
-这个项目目前仍然是一个比较粗糙、早期阶段的工作。
-
-它现在已经可以作为实验性 backend 使用，也适合作为你自定义 Agent Tool 的起点，但它还远远不能被描述成一个“已经完成的、足够鲁棒的 Web Search 系统”。
+这个项目目前仍然是一个比较粗糙、早期阶段的工作。它现在已经可以作为实验性 backend 使用，也适合作为你自定义 Agent Tool 的起点，但它还远远不能被描述成一个“已经完成的、足够鲁棒的 Web Search 系统”。
 
 目前还存在不少明显的粗糙之处：
 
 - 上游搜索引擎页面结构变化会直接影响解析
 - 某些结果提取链路仍然比较脆弱
 - 排序质量目前只是一个 baseline
-- planner 规则仍然在持续迭代
-- LLM planner 对不同 provider 的兼容性还需要更多打磨
+- planner 规则不够稳健
+- LLM planner 对不同 provider 的兼容性不足
+- 自定义配置的支持不足
 
-如果你准备采用这个项目，更准确的预期应该是：
-
-- 它现在已经可用
-- 它足够透明
-- 它容易修改
-- 但它还没有完成
-
-这也是项目当前阶段的刻意选择：
-先把这层能力开源、显式化、可编辑化，再逐步把它打磨得更稳。
-
-## 这个项目想解决什么问题
-
-这个项目解决的不是“如何直接调用某一个搜索引擎”，而是：
-
-- 如何根据 query 决定应该用哪些搜索源
-- 如何把多来源结果统一成一份结构化输出
-- 如何在多引擎结果里做去重、合并和排序
-- 如何把结果组织成 Agent Tool 更容易消费的格式
-- 如何在需要时进一步提取页面内容，而不是每次都走 Browser
 
 ## 设计目标
 
@@ -89,12 +71,12 @@
 - 用 YAML 配置 engine group 和顺序
 - 为每个搜索引擎配置多组请求头
 - 把不同来源结果统一成一套 schema
-- 用 canonical URL 和 title signature 去重
-- 按相关性、时效性、来源质量、多源共识做基础排序
+- 用 URL 和 title signature 去重
+- 一个聊胜于无的排序
 - 在需要时解析 URL 并提取可读正文
 - 输出结构化日志，方便调试和离线评估
 
-当前内置的上游 adapter 包括：
+当前内置的上游搜索引擎包括：
 
 - `google_web`
 - `bing_web`
@@ -105,59 +87,6 @@
 - `stackoverflow`
 - `github`
 - `google_news_rss`
-
-## 它不做什么
-
-- 不是通用浏览器自动化系统
-- 不是完整的搜索引擎或爬虫平台
-- 不是所有网页都能完美正文提取的读取器
-- 不是对任何模型原生 web search 的完全替代品
-
-如果页面依赖：
-
-- 登录态
-- 前端渲染
-- 无穷滚动
-- DOM 交互
-- 按钮点击和表单操作
-
-那应该让 Browser Tool 接管，而不是让这个项目承担浏览器职责。
-
-## 适合怎样接入 Agent
-
-如果你想把这个仓库作为 Agent Tool 的底层实现，最推荐的方式不是把 `search_web.py` 直接暴露给模型，而是拆成两个工具：
-
-1. `web_search`
-只负责搜索，返回轻量、结构化、可排序的候选结果。
-
-2. `web_extract`
-只负责对 Agent 真正决定查看的 URL 做正文提取。
-
-这种拆分方式的优点：
-
-- 搜索更快
-- token 成本更低
-- 更符合 Agent 的逐步决策流程
-- 更容易和 Browser Tool 配合
-
-推荐的 `web_search` 输出字段：
-
-- `title`
-- `url`
-- `snippet`
-- `engine`
-- `engines`
-- `score`
-- `published_at`
-- `source_type`
-
-推荐的 `web_extract` 输出字段：
-
-- `final_url`
-- `title`
-- `content_text`
-- `content_markdown`
-- `error`
 
 ## 核心架构
 
@@ -180,7 +109,7 @@
 
 ## Roadmap
 
-这个项目未来的方向不会是做成一个巨大的通用搜索平台，而是持续把它打磨成一个更适合 Agent 使用的 Websearch Backend。
+这个项目未来会持续把它打磨成一个更适合 Agent 使用的 Websearch Backend。
 
 ### 更多搜索后端
 
@@ -263,7 +192,7 @@ python3 scripts/search_web.py "what is CRDT" --pretty
 新闻搜索：
 
 ```bash
-python3 scripts/search_web.py "today's nasdaq news" --category news --pretty
+python3 scripts/search_web.py "today's news" --category news --pretty
 ```
 
 代码问题搜索：
@@ -284,9 +213,14 @@ python3 scripts/search_web.py "asyncio taskgroup" --site docs.python.org --prett
 python3 scripts/search_web.py "OpenAI API responses" --read --pretty
 ```
 
+批量 smoke test：
+
+```bash
+python3 scripts/batch_test_search.py --pretty
+```
 ## 配置方式
 
-默认配置文件在 [app/search/search_engines.yaml](/Users/tongbu/lazyhuman-ai/websearch/app/search/search_engines.yaml)。
+默认配置文件在 [app/search/search_engines.yaml](./app/search/search_engines.yaml)。
 
 它主要控制三类内容：
 
@@ -311,8 +245,6 @@ engine_headers:
     - User-Agent: Mozilla/5.0 (...)
       Accept-Language: en-GB,en;q=0.8
 ```
-
-## CLI 说明
 
 常用参数包括：
 
@@ -360,20 +292,6 @@ CLI 返回 JSON，核心字段包括：
 - `logs/batch_test_search.log`
 - `logs/batch_test_search.clean.log`
 
-## 测试
-
-语法检查：
-
-```bash
-PYTHONPYCACHEPREFIX=.pycache python3 -m py_compile $(find app scripts -name '*.py')
-```
-
-批量 smoke test：
-
-```bash
-python3 scripts/batch_test_search.py --pretty
-```
-
 ## 已知限制
 
 - HTML 搜索源容易受页面结构变化影响
@@ -397,17 +315,6 @@ python3 scripts/batch_test_search.py --pretty
 - 你只需要浏览器级网页交互
 - 你只需要最省事的 vendor-native search
 - 你要处理大量需要登录和前端渲染的网站
-
-## 贡献方向
-
-最有价值的贡献通常包括：
-
-- 增加新的 engine adapter
-- 修复已有 adapter 的解析逻辑
-- 改进排序和结果质量
-- 提高 LLM planner 兼容性
-- 提高 URL extraction 稳定性
-- 增加评测数据和回归测试
 
 ## License
 
