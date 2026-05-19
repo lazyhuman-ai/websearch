@@ -10,6 +10,37 @@ from app.search.types import RawSearchHit, SearchCategory
 
 
 TOKEN_RE = re.compile(r"[a-z0-9]{2,}")
+STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "how",
+    "in",
+    "is",
+    "it",
+    "latest",
+    "news",
+    "of",
+    "on",
+    "or",
+    "recent",
+    "the",
+    "to",
+    "today",
+    "what",
+    "when",
+    "where",
+    "who",
+    "why",
+    "with",
+}
 SOURCE_PRIORS = {
     "wikipedia": 0.08,
     "arxiv": 0.1,
@@ -17,10 +48,34 @@ SOURCE_PRIORS = {
     "stackoverflow": 0.08,
     "google_news_rss": 0.06,
 }
+TOKEN_ALIASES = {
+    "us": ["united", "states"],
+    "usa": ["united", "states"],
+}
 
 
 def _tokenize(text: str) -> list[str]:
-    return TOKEN_RE.findall((text or "").lower())
+    raw_tokens = TOKEN_RE.findall((text or "").lower())
+    normalized: list[str] = []
+    for token in raw_tokens:
+        normalized.append(token)
+        normalized.extend(TOKEN_ALIASES.get(token, []))
+    return normalized
+
+
+def meaningful_query_tokens(text: str) -> list[str]:
+    tokens = [token for token in _tokenize(text) if token not in STOPWORDS]
+    return tokens or _tokenize(text)
+
+
+def has_meaningful_overlap(query: str, *fields: str) -> bool:
+    query_tokens = set(meaningful_query_tokens(query))
+    if not query_tokens:
+        return True
+    doc_tokens: set[str] = set()
+    for field in fields:
+        doc_tokens.update(_tokenize(field))
+    return bool(query_tokens & doc_tokens)
 
 
 def _overlap(query_tokens: list[str], doc_tokens: list[str]) -> float:
@@ -33,7 +88,7 @@ def _overlap(query_tokens: list[str], doc_tokens: list[str]) -> float:
 
 
 def score_hit(query: str, hit: RawSearchHit, *, category: SearchCategory) -> float:
-    query_tokens = _tokenize(query)
+    query_tokens = meaningful_query_tokens(query)
     title_overlap = _overlap(query_tokens, _tokenize(hit.title))
     snippet_overlap = _overlap(query_tokens, _tokenize(hit.snippet))
     consensus_bonus = min(0.25, 0.06 * max(0, len(hit.engines) - 1))

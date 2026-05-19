@@ -1,237 +1,402 @@
-# Python Native Multi-Engine Web Search
+# Websearch
 
-一个最小但可扩展的 SearXNG 风格搜索内核。
+Lightweight multi-engine web search infrastructure for agents.
 
-仓库现在只保留两部分：
+This project is built for teams that want a self-hostable, inspectable fallback to vendor-native web search when building their own agent framework, tool layer, or orchestration runtime.
 
-- 核心搜索库：`app/search/`
-- 手动测试脚本：`scripts/search_web.py`
+It is not trying to be a browser, a full search engine, or a general crawling platform.
+It focuses on one narrow job:
 
-不包含 agent、前端、HTTP API、session、dataset 或评测框架。
+- accept a search request
+- route it across multiple upstream search engines
+- normalize heterogeneous results into one schema
+- deduplicate, rank, and return agent-friendly output
+- optionally resolve URLs and extract readable page content
 
-## 目标
+## Why This Project Exists
 
-这个项目解决的问题不是“调用某一个搜索引擎”，而是：
+Most agent stacks eventually need a web search tool, but the common choices have tradeoffs:
 
-- 接收一个 query 和少量搜索参数
-- 同时请求多个搜索源
-- 统一解析不同来源的结果
-- 去重、合并、排序
-- 返回一个尽可能稳定、可解释的聚合结果
+- model-native web search is convenient but opaque
+- browser automation is powerful but slow and expensive
+- direct integration with a single search provider is brittle
+- large metasearch systems are flexible but often too heavy for embedding into an agent runtime
 
-它的设计思路接近 SearXNG，但实现保持最小化，重点放在：
+This repository exists to fill that gap.
 
-- 多 engine 并发
-- 统一结果类型
-- 结果清洗与聚合
-- 类别感知的 engine 规划
+The goal is to provide an open, hackable websearch backend that can be used as:
 
-## 实现思路
+- a fallback web search tool inside an agent framework
+- a replaceable search layer behind your own tool API
+- a research sandbox for ranking, routing, and extraction strategies
+- a self-hosted alternative when you do not want your framework tightly coupled to one external provider
 
-整体实现分成 4 层：
+## Current Status
 
-1. `SearchRequest`
-   统一描述一次搜索请求，包括 `query`、`category`、`language`、`page`、`time_range`、`max_results`、`enabled_engines`、`site`。
+This is still a rough, early-stage project.
 
-2. planner
-   根据请求内容决定本次应该跑哪些 engine。
-   例如：
-   - `general` 走通用 web engine
-   - `news` 加新闻源
-   - `academic` 加 `arxiv`
-   - `code` 加 `stackoverflow`、`github`
-   - 如果结果太弱，会触发第二轮 fallback engine
+It is useful today as an experimental backend and a starting point for custom agent tooling, but it should not be described as a finished or fully robust web search system.
 
-3. adapter
-   每个搜索源都被包装成统一接口：
-   - `fetch`
-   - `parse`
-   - `normalize`
+There are still many rough edges:
 
-   当前支持：
-   - `google_web`
-   - `bing_web`
-   - `brave_web`
-   - `duckduckgo_lite`
-   - `wikipedia`
-   - `arxiv`
-   - `stackoverflow`
-   - `github`
-   - `google_news_rss`
+- upstream engines can break when markup changes
+- some result extraction paths are still brittle
+- ranking quality is only a baseline
+- planner behavior is still evolving
+- provider compatibility for LLM-assisted planning still needs more hardening
 
-4. aggregator
-   把多个 engine 的结果统一成内部 `RawSearchHit`，然后：
-   - URL normalize
-   - tracker removal
-   - redirect unwrap
-   - canonical URL 去重
-   - host + title signature 合并
-   - 结合 query overlap、freshness、source prior、多源共识做排序
+If you adopt this project, the right mental model is:
 
-## 从 Query 到输出结果的完整过程
+- usable
+- inspectable
+- hackable
+- not finished
 
-执行链路如下：
+That is intentional.
+The project was started to make this layer open and editable first, and production-hardening comes later.
 
-`query -> SearchRequest -> request normalize -> category / intent 识别 -> engine plan -> concurrent fetch -> adapter parse -> RawSearchHit -> normalize -> dedupe / merge / rank -> SearchResponse`
+## Design Goals
 
-更具体一点：
+- Agent-first: outputs are structured for LLM and tool use, not just for humans.
+- Multi-engine by default: no hard dependency on one provider.
+- Transparent: planning, engine usage, failures, and ranking are inspectable.
+- Lightweight: simple Python implementation, easy to fork and adapt.
+- Replaceable: engines, planner behavior, and extraction logic can be swapped independently.
 
-1. 用户通过 `scripts/search_web.py` 传入 query 和参数。
-2. 脚本构造 `SearchRequest`。
-3. `SearchClient` 先规范化请求：
-   - 修正 `page`
-   - 限制 `max_results`
-   - 在 `category=auto` 时根据 query 推断类别
-   - 如果给了 `site`，把 `site:domain` 注入查询
-4. planner 选择一组 engine。
-5. 搜索核心并发请求这些 engine。
-6. 每个 adapter 解析自己的 HTML / JSON / RSS / API 返回。
-7. 所有结果统一转成 `RawSearchHit`。
-8. 聚合器清洗 URL，并对重复结果做合并。
-9. 排序器按相关性、时效性和来源质量重排。
-10. 输出 `SearchResponse`：
-   - `query`
-   - `request`
-   - `used_engines`
-   - `results`
-   - `engine_failures`
-11. 如果加了 `--read`，再对前几个结果抓取正文，附加 `documents`。
+## What It Does
 
-## 默认 engine 规划
+- Concurrent search across multiple engines
+- Query planning by category such as `general`, `news`, `reference`, `academic`, and `code`
+- Engine routing with YAML configuration
+- Per-engine request header rotation
+- Result normalization into a unified schema
+- Deduplication by canonical URL and title signature
+- Basic ranking with overlap, freshness, source priors, and multi-engine consensus
+- Optional URL resolution and readable content extraction
+- Structured logs for debugging and offline evaluation
 
-- `general`
-  - `google_web + bing_web + brave_web + duckduckgo_lite`
-- `news`
-  - `google_web + bing_web + google_news_rss + duckduckgo_lite`
-- `reference`
-  - `google_web + bing_web + duckduckgo_lite + wikipedia`
-- `academic`
-  - `google_web + bing_web + arxiv`
-- `code`
-  - `google_web + bing_web + duckduckgo_lite + stackoverflow + github`
+Current upstream adapters include:
 
-如果显式传 `--engines`，则优先使用指定列表。
+- `google_web`
+- `bing_web`
+- `brave_web`
+- `duckduckgo_lite`
+- `wikipedia`
+- `arxiv`
+- `stackoverflow`
+- `github`
+- `google_news_rss`
 
-## 安装
+## What It Is Not
 
-```bash
-pip install -r requirements.txt
-```
+- not a general-purpose browser automation system
+- not a guaranteed high-recall search platform
+- not a production crawler for arbitrary web pages
+- not a drop-in replacement for all model-native web search products
 
-## 使用方法
+If a page needs JavaScript execution, login, infinite scroll, or DOM interaction, a browser tool should usually be the next step after this project, not a responsibility of this project itself.
 
-最简单的调用：
+## Project Origin
 
-```bash
-python scripts/search_web.py "what is CRDT" --pretty
-```
+This project started from a practical engineering problem:
 
-常用参数：
+When building agents, web search is often treated as a black box. That is acceptable until you need one of the following:
 
-- `--category`
-  - `auto`, `general`, `news`, `reference`, `academic`, `code`
-- `--language`
-  - 例如 `en-US`, `zh-CN`
-- `--page`
-- `--time-range`
-  - `any`, `day`, `week`, `month`, `year`
-- `--max-results`
-- `--engines`
-  - 逗号分隔，覆盖默认 planner
-- `--site`
-  - 限定站点，例如 `docs.python.org`
-- `--read`
-  - 抓取前几个结果正文
-- `--pretty`
+- explain why a result was returned
+- inspect which engines were used
+- control routing by query type
+- add a custom ranking rule
+- swap upstream providers
+- keep a self-hosted fallback when a vendor tool is unavailable
 
-示例：
+This repository was created to make that layer explicit and editable.
 
-```bash
-python scripts/search_web.py "latest python news" --category news --max-results 5 --pretty
-python scripts/search_web.py "retrieval augmented generation survey" --category academic --time-range year --pretty
-python scripts/search_web.py "GitHub Actions permission denied shell script" --category code --pretty
-python scripts/search_web.py "asyncio taskgroup" --site docs.python.org --pretty
-python scripts/search_web.py "OpenAI API responses" --read --pretty
-```
+The design is influenced by the spirit of projects such as SearXNG and by the tool-oriented ergonomics common in modern agent frameworks, but the implementation is intentionally smaller and easier to embed.
 
-## 输出格式
+## Roadmap
 
-脚本输出 JSON，核心字段包括：
+The roadmap is intentionally pragmatic. The goal is not to become a giant search platform, but to make this backend substantially more useful for real agent systems.
 
-- `query`
-- `request`
-- `used_engines`
-- `results`
-- `engine_failures`
-- `documents`
-  - 仅在 `--read` 时出现
+### Search Backends
 
-`results` 中每条结果至少包含：
+- Add more upstream search backends and provider adapters
+- Support easier backend swapping through a cleaner provider abstraction
+- Add optional hosted/provider-native backends alongside HTML-based engines
+- Improve source-specific handling for news, docs, code, and academic content
+
+### Robustness
+
+- Make HTML parsing more resilient to upstream layout changes
+- Improve redirect unwrapping and wrapper-link recovery
+- Improve handling of throttling, challenge pages, soft bans, and regional interstitials
+- Add clearer retry and degradation strategies per backend
+- Improve extraction fallback behavior when full readable content is unavailable
+
+### Ranking
+
+- Improve result ranking beyond the current baseline heuristics
+- Add better source priors by category
+- Add domain-level trust and quality signals
+- Improve freshness handling for news queries
+- Add better aggregation across overlapping results from multiple engines
+- Reduce low-quality results such as video noise, wrapper pages, and near-duplicates
+
+### Planner
+
+- Add more rule-based planner coverage for common agent search patterns
+- Improve query rewriting for ambiguous, factual, temporal, and site-specific requests
+- Improve LLM planner compatibility across providers and response formats
+- Add safer fallback behavior when LLM planning is unavailable
+- Make planner decisions more inspectable and easier to evaluate offline
+
+### Agent Integration
+
+- Expose a cleaner `web_search` and `web_extract` tool interface
+- Add examples for integrating with common agent runtimes
+- Separate search, fetch, and browser escalation paths more cleanly
+- Add better structured telemetry for tool invocations
+
+### Evaluation
+
+- Add repeatable regression tests for search quality
+- Add benchmark query sets by category
+- Add result-quality inspection tooling and failure categorization
+- Track planner behavior, engine health, and extraction quality over time
+
+## Architecture
+
+The core flow is:
+
+`SearchRequest -> planner -> engine fanout -> parse -> normalize -> dedupe -> rank -> SearchResponse`
+
+Main components:
+
+- `SearchRequest`
+  Unified request object for query, category, language, site filter, time range, and engine request limits.
+- `RulePlanner` and `LLMPlanner`
+  Decide which engines should be used for a request and optionally rewrite the query.
+- `SearchEngine`
+  Base abstraction implemented once per upstream engine.
+- `SearchClient`
+  Coordinates fanout, merging, ranking, fallback engines, URL resolution, and response formatting.
+- `url_tools`
+  Resolves URLs and extracts agent-friendly content from pages.
+
+## Recommended Agent Integration
+
+If you want to use this repository as a tool backend in your own framework, the best pattern is to expose two tools:
+
+1. `web_search`
+Search only. Return lightweight ranked candidates.
+
+2. `web_extract`
+Fetch and extract readable content only for URLs the agent actually decides to inspect.
+
+This separation keeps search fast and cheap while preserving a path to deeper retrieval when needed.
+
+Recommended `web_search` response fields:
 
 - `title`
 - `url`
 - `snippet`
 - `engine`
 - `engines`
-- `published_at`
 - `score`
+- `published_at`
+- `source_type`
 
-## 测试方法
+Recommended `web_extract` response fields:
 
-推荐做 3 层测试。
+- `final_url`
+- `title`
+- `content_text`
+- `content_markdown`
+- `error`
 
-### 1. 编译检查
+## Repository Layout
 
-确认当前代码没有语法问题：
-
-```bash
-PYTHONPYCACHEPREFIX=.pycache python -m py_compile $(find app scripts -name '*.py')
+```text
+app/
+  config.py
+  search/
+    core.py
+    planner.py
+    llm_planner.py
+    engine_config.py
+    url_tools.py
+    search_engines.yaml
+    engines/
+scripts/
+  search_web.py
+  batch_test_search.py
 ```
 
-如果你使用 `conda`：
+## Installation
 
 ```bash
-PYTHONPYCACHEPREFIX=.pycache conda run -n demo python -m py_compile $(find app scripts -name '*.py')
+pip install -r requirements.txt
 ```
 
-### 2. 手动 smoke test
+## Quick Start
 
-至少跑下面 5 类：
+Basic usage:
 
 ```bash
-python scripts/search_web.py "what is MVCC" --category general --pretty
-python scripts/search_web.py "latest semiconductor news" --category news --pretty
-python scripts/search_web.py "BEIR benchmark paper" --category academic --pretty
-python scripts/search_web.py "GitHub Actions permission denied shell script" --category code --pretty
-python scripts/search_web.py "asyncio taskgroup" --site docs.python.org --pretty
+python3 scripts/search_web.py "what is CRDT" --pretty
 ```
 
-测试时重点看：
-
-- `used_engines` 是否符合 planner 预期
-- `results` 是否非空
-- `engine_failures` 是否只影响单个源，而不是整次失败
-- `site` 限定时是否只返回目标域
-- `code` / `academic` 类是否命中专用源
-
-### 3. 带正文抓取的测试
+News search:
 
 ```bash
-python scripts/search_web.py "OpenAI API responses" --read --pretty
-python scripts/search_web.py "latest semiconductor news" --category news --read --pretty
+python3 scripts/search_web.py "today's nasdaq news" --category news --pretty
 ```
 
-重点看：
+Code-oriented search:
 
-- `documents[*].success`
-- `documents[*].content`
-- 新闻聚合链接是否能成功还原正文
+```bash
+python3 scripts/search_web.py "GitHub Actions permission denied shell script" --category code --pretty
+```
 
-## 已知限制
+Site-restricted search:
 
-- `google_web`、`brave_web`、`github` 这类 HTML 搜索源会受页面结构变化和反爬影响
-- `brave_web` 在某些环境下可能返回 `429`
-- `arxiv` 在部分网络环境里可能超时或失败
-- `google_news_rss` 常返回聚合包装链接，`--read` 时不一定能抓到正文
-- `site` 限定是强过滤；如果上游引擎没给目标域结果，最终会返回空数组
-- 这套实现强调“多源聚合结构正确”，不保证每个 query 在所有地区和网络环境下都得到高质量结果
+```bash
+python3 scripts/search_web.py "asyncio taskgroup" --site docs.python.org --pretty
+```
+
+Content extraction:
+
+```bash
+python3 scripts/search_web.py "OpenAI API responses" --read --pretty
+```
+
+## Configuration
+
+Default engine configuration lives in [app/search/search_engines.yaml](/Users/tongbu/lazyhuman-ai/websearch/app/search/search_engines.yaml).
+
+It controls:
+
+- engine groups
+- disabled engines
+- per-engine header profiles
+
+Example:
+
+```yaml
+groups:
+  general:
+    - bing_web
+    - duckduckgo_lite
+    - google_web
+    - brave_web
+
+engine_headers:
+  google_web:
+    - User-Agent: Mozilla/5.0 (...)
+      Accept-Language: en-US,en;q=0.9
+    - User-Agent: Mozilla/5.0 (...)
+      Accept-Language: en-GB,en;q=0.8
+```
+
+## CLI Notes
+
+Key options:
+
+- `--category`
+- `--language`
+- `--site`
+- `--time-range`
+- `--max-results`
+  Per-engine result count requested from the upstream search engine.
+- `--max-engine-requests`
+  Maximum paginated requests sent to each engine.
+- `--engine-config`
+- `--resolve-urls` / `--no-resolve-urls`
+- `--include-url-content` / `--no-include-url-content`
+- `--read`
+
+## Output Shape
+
+The CLI returns JSON with fields such as:
+
+- `query`
+- `request`
+- `used_engines`
+- `results`
+- `planner`
+- `engine_health`
+- `engine_failures`
+
+When `--read` is enabled, the output also includes:
+
+- `documents`
+
+## Logging
+
+The scripts write:
+
+- raw JSON logs
+- clean logs with URL plus extracted or fallback-readable content
+
+Default paths:
+
+- `logs/search_web.log`
+- `logs/search_web.clean.log`
+- `logs/batch_test_search.log`
+- `logs/batch_test_search.clean.log`
+
+## Testing
+
+Syntax check:
+
+```bash
+PYTHONPYCACHEPREFIX=.pycache python3 -m py_compile $(find app scripts -name '*.py')
+```
+
+Batch smoke test:
+
+```bash
+python3 scripts/batch_test_search.py --pretty
+```
+
+## Known Limitations
+
+- HTML search engines are brittle and can break when upstream markup changes.
+- Some engines may challenge, throttle, or geo-gate requests.
+- Google News often returns wrapper URLs rather than direct publisher links.
+- Readable content extraction is best-effort and will not match browser rendering on all sites.
+- Some domains are better handled by a browser tool than by HTTP fetch plus extraction.
+- This project favors debuggability and controllability over perfect recall.
+
+## When To Use This
+
+Use this project if you want:
+
+- a controllable open-source fallback for agent web search
+- a search backend you can embed inside your own framework
+- structured search results instead of browser snapshots
+- a place to experiment with ranking, routing, and engine selection
+
+Do not use this as your only web tool if your agent needs:
+
+- authenticated browsing
+- JavaScript-heavy apps
+- interactive page operations
+- exact page rendering fidelity
+
+## Contributing
+
+The easiest high-value contributions are:
+
+- adding or fixing engine adapters
+- improving result quality and ranking rules
+- improving LLM planner compatibility
+- improving URL extraction robustness
+- adding evaluation datasets and regression tests
+
+## License
+
+See the repository license file if present, or add one before public distribution.
+
+## Chinese README
+
+For the Chinese version, see [README_zh.md](/Users/tongbu/lazyhuman-ai/websearch/README_zh.md).

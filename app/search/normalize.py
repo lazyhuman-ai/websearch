@@ -22,10 +22,8 @@ UNWRAP_KEYS = ("uddg", "u", "url", "target", "dest", "destination", "redir", "re
 MULTI_SPACE_RE = re.compile(r"\s+")
 NON_WORD_RE = re.compile(r"[^a-z0-9]+")
 
-
 def clean_text(text: str) -> str:
     return MULTI_SPACE_RE.sub(" ", unescape(text or "")).strip()
-
 
 def unwrap_redirect_url(url: str) -> str:
     if not url:

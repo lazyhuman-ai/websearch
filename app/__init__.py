@@ -1,1 +1,1 @@
-"""WebResearch Agent MVP application package."""
+"""Application package for the lightweight websearch client."""
