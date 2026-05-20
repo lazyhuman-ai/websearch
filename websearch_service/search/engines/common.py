@@ -4,9 +4,10 @@ import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from urllib.parse import unquote
 
-from app.search.normalize import clean_text
-from app.search.types import RawSearchHit
+from websearch_service.search.normalize import clean_text, unwrap_redirect_url
+from websearch_service.search.types import RawSearchHit
 
 
 TAG_RE = re.compile(r"<[^>]+>")
@@ -14,6 +15,14 @@ GOOGLE_LINK_RE = re.compile(r'href="/url\?q=(https?://[^"&]+)[^"]*"[^>]*>(.*?)</
 GOOGLE_FALLBACK_RE = re.compile(r'<a[^>]+href="(https?://[^"]+)"[^>]*>(.*?)</a>(?P<after>.*?)(?=(?:<a[^>]+href=)|$)', re.I | re.S)
 ANCHOR_RE = re.compile(r'<a[^>]+href="(?P<url>https?://[^"]+)"[^>]*>(?P<title>.*?)</a>(?P<after>.*?)(?=(?:<a[^>]+href=)|$)', re.I | re.S)
 GITHUB_LINK_RE = re.compile(r'<a[^>]+href="(/[^"]+)"[^>]*class="[^"]*v-align-middle[^"]*"[^>]*>(.*?)</a>(?P<after>.*?)(?=(?:<a[^>]+href=)|$)', re.I | re.S)
+BING_RESULT_RE = re.compile(
+    r'<li[^>]+class="[^"]*\bb_algo\b[^"]*"[^>]*>.*?<h2[^>]*>\s*<a[^>]+href="(?P<url>[^"]+)"[^>]*>(?P<title>.*?)</a>.*?(?:<div[^>]+class="[^"]*\bb_caption\b[^"]*"[^>]*>\s*<p[^>]*>(?P<snippet>.*?)</p>)?',
+    re.I | re.S,
+)
+DDG_LITE_RESULT_RE = re.compile(
+    r"<a(?=[^>]*class=['\"]result-link['\"])(?=[^>]*href=['\"](?P<url>[^'\"]+)['\"])[^>]*>(?P<title>.*?)</a>.*?<td[^>]+class=['\"]result-snippet['\"][^>]*>(?P<snippet>.*?)</td>",
+    re.I | re.S,
+)
 ARXIV_NS = {"atom": "http://www.w3.org/2005/Atom"}
 SNIPPET_NOISE_RE = re.compile(
     r"\b(?:cached|translate this page|similar pages|view all|more results|feedback|images|videos|news)\b",
@@ -55,6 +64,34 @@ def generic_hits(html: str, engine: str, *, limit: int, host_filter: str | None 
             continue
         hits.append(RawSearchHit(title=title, url=url, snippet=snippet, engine=engine, engines=[engine]))
         if len(hits) >= limit * 3:
+            break
+    return hits
+
+
+def parse_bing_web_hits(html: str, engine: str, *, limit: int) -> list[RawSearchHit]:
+    hits: list[RawSearchHit] = []
+    for match in BING_RESULT_RE.finditer(html):
+        url = unwrap_redirect_url(clean_text(match.group("url")))
+        title = strip_tags(match.group("title"))
+        snippet = clean_snippet(match.group("snippet") or "")
+        if not url or not title:
+            continue
+        hits.append(RawSearchHit(title=title, url=url, snippet=snippet, engine=engine, engines=[engine]))
+        if len(hits) >= limit:
+            break
+    return hits
+
+
+def parse_ddg_lite_hits(html: str, engine: str, *, limit: int) -> list[RawSearchHit]:
+    hits: list[RawSearchHit] = []
+    for match in DDG_LITE_RESULT_RE.finditer(html):
+        url = unwrap_redirect_url(unquote(clean_text(match.group("url"))))
+        title = strip_tags(match.group("title"))
+        snippet = clean_snippet(match.group("snippet") or "")
+        if not url or not title:
+            continue
+        hits.append(RawSearchHit(title=title, url=url, snippet=snippet, engine=engine, engines=[engine]))
+        if len(hits) >= limit:
             break
     return hits
 

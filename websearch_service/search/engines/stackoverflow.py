@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import httpx
 
-from app.search.engines.base import SearchEngine
-from app.search.normalize import clean_text
-from app.search.types import RawSearchHit, SearchRequest
+from websearch_service.search.engines.base import SearchEngine
+from websearch_service.search.normalize import clean_text
+from websearch_service.search.types import RawSearchHit, SearchRequest
 
 
 class StackOverflowEngine(SearchEngine):

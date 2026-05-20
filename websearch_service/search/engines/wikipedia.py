@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import httpx
 
-from app.search.engines.base import SearchEngine
-from app.search.engines.common import clean_snippet
-from app.search.normalize import clean_text
-from app.search.types import RawSearchHit, SearchRequest
+from websearch_service.search.engines.base import SearchEngine
+from websearch_service.search.engines.common import clean_snippet
+from websearch_service.search.normalize import clean_text
+from websearch_service.search.types import RawSearchHit, SearchRequest
 
 
 class WikipediaEngine(SearchEngine):

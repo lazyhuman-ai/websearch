@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import httpx
 
-from app.search.engines.base import SearchEngine
-from app.search.engines.common import generic_hits
-from app.search.types import RawSearchHit, SearchAdapterError, SearchRequest
+from websearch_service.search.engines.base import SearchEngine
+from websearch_service.search.engines.common import generic_hits
+from websearch_service.search.types import RawSearchHit, SearchAdapterError, SearchRequest
 
 
 class BraveWebEngine(SearchEngine):
@@ -12,6 +12,17 @@ class BraveWebEngine(SearchEngine):
 
     def max_attempts(self, request: SearchRequest) -> int:
         return 2
+
+    def build_headers(self, request: SearchRequest) -> dict[str, str]:
+        headers = super().build_headers(request)
+        headers.update(
+            {
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "same-origin",
+            }
+        )
+        return headers
 
     async def fetch(self, client: httpx.AsyncClient, request: SearchRequest) -> httpx.Response:
         return await client.get(

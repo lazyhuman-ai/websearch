@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import httpx
 
-from app.search.engines.base import SearchEngine
-from app.search.engines.common import generic_hits, time_suffix
-from app.search.types import RawSearchHit, SearchAdapterError, SearchRequest
+from websearch_service.search.engines.base import SearchEngine
+from websearch_service.search.engines.common import parse_bing_web_hits, time_suffix
+from websearch_service.search.types import RawSearchHit, SearchAdapterError, SearchRequest
 
 
 class BingWebEngine(SearchEngine):
@@ -12,6 +12,16 @@ class BingWebEngine(SearchEngine):
 
     def max_attempts(self, request: SearchRequest) -> int:
         return 2
+
+    def build_headers(self, request: SearchRequest) -> dict[str, str]:
+        headers = super().build_headers(request)
+        headers.update(
+            {
+                "Referer": "https://www.bing.com/",
+                "Upgrade-Insecure-Requests": "1",
+            }
+        )
+        return headers
 
     async def fetch(self, client: httpx.AsyncClient, request: SearchRequest) -> httpx.Response:
         params = {"q": request.effective_query(), "setlang": request.language, "first": max(1, ((request.page - 1) * 10) + 1), "count": max(10, request.max_results), "ensearch": 1}
@@ -23,5 +33,4 @@ class BingWebEngine(SearchEngine):
     def parse(self, response: httpx.Response, request: SearchRequest) -> list[RawSearchHit]:
         if "Our systems have detected unusual traffic" in response.text or "bnp_container" in response.text and "captcha" in response.text.lower():
             raise SearchAdapterError(f"{self.name} blocked_challenge")
-        hits = generic_hits(response.text, self.name, limit=request.max_results)
-        return [hit for hit in hits if "bing.com/" not in hit.url][: request.max_results]
+        return parse_bing_web_hits(response.text, self.name, limit=request.max_results)

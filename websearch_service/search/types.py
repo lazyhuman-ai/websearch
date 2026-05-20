@@ -90,6 +90,7 @@ class SearchResponse:
     planner: dict[str, object] = field(default_factory=dict)
     engine_health: dict[str, object] = field(default_factory=dict)
     engine_failures: dict[str, str] = field(default_factory=dict)
+    engine_diagnostics: dict[str, dict[str, object]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -100,6 +101,7 @@ class SearchResponse:
             "planner": self.planner,
             "engine_health": self.engine_health,
             "engine_failures": self.engine_failures,
+            "engine_diagnostics": self.engine_diagnostics,
         }
 
 

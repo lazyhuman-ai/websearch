@@ -3,16 +3,25 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from app.config import Settings
-from app.search.engine_config import load_engine_config
-from app.search.llm_planner import LLMPlanner, PlannerDecision
-from app.search.types import SearchRequest
+from websearch_service.config import Settings
+from websearch_service.search.engine_config import load_engine_config
+from websearch_service.search.llm_planner import LLMPlanner, PlannerDecision
+from websearch_service.search.types import SearchRequest
 
 
 NEWS_HINT_RE = re.compile(r"\b(latest|recent|today|news|headline|breaking)\b", re.I)
 ACADEMIC_HINT_RE = re.compile(r"\b(paper|survey|benchmark|arxiv|research)\b", re.I)
 CODE_HINT_RE = re.compile(r"\b(github|repo|repository|issue|sdk|library|debug|bug|error|exception)\b", re.I)
 REFERENCE_HINT_RE = re.compile(r"\b(who is|what is|history|biography|definition|wiki)\b", re.I)
+ROUTE_SPECIALIZED_GROUPS = {
+    "general": [],
+    "news": ["news"],
+    "reference": ["reference"],
+    "academic": ["academic"],
+    "code": ["code"],
+}
+
+
 @dataclass(slots=True)
 class EngineGroups:
     groups: dict[str, list[str]]
@@ -55,7 +64,13 @@ class RulePlanner:
                 default_category=default_category,
             )
             if llm_decision is not None:
-                return llm_decision
+                return PlannerDecision(
+                    engines=self._build_route_engines(groups, llm_decision.category, available_engines, request),
+                    normalized_query=llm_decision.normalized_query,
+                    category=llm_decision.category,
+                    used_llm=True,
+                    reason=llm_decision.reason or "llm_route_planner",
+                )
         return PlannerDecision(
             engines=self.plan(request, available_engines),
             normalized_query=request.query.strip(),
@@ -72,27 +87,28 @@ class RulePlanner:
             base = groups.get("site") or groups.get("general")
             return [name for name in base if name in available_engines]
 
-        group_name = request.category if request.category != "auto" else self.infer_category(request.query)
-        selected = [name for name in groups.get("general") if name in available_engines]
-        if group_name != "general":
-            selected = self._merge(selected, [name for name in groups.get(group_name) if name in available_engines])
-        return self._append_rule_engines(request, selected, available_engines, category=group_name)
+        category = request.category if request.category != "auto" else self.infer_category(request.query)
+        return self._build_route_engines(groups, category, available_engines, request)
 
     def fallback_engines(self, request: SearchRequest, used_engines: list[str], available_engines: set[str]) -> list[str]:
         groups = self.load_engine_groups(request.engine_config_path)
-        if request.category == "general":
-            candidates = ["wikipedia", "stackoverflow", "github"]
-        elif request.category == "code":
-            candidates = ["stackoverflow", "github", "duckduckgo_lite"]
-        elif request.category == "academic":
-            candidates = ["arxiv", "duckduckgo_lite"]
-        elif request.category == "reference":
-            candidates = ["wikipedia", "duckduckgo_lite"]
-        elif request.category == "news":
-            candidates = ["google_news_rss", "duckduckgo_lite"]
-        else:
-            candidates = groups.get("general")
+        category = request.category if request.category != "auto" else self.infer_category(request.query)
+        candidates = self._build_route_engines(groups, category, available_engines, request)
+        if category == "general":
+            candidates = self._merge(candidates, ["wikipedia", "stackoverflow", "github"])
         return [name for name in candidates if name in available_engines and name not in used_engines and name not in groups.disabled]
+
+    def _build_route_engines(
+        self,
+        groups: EngineGroups,
+        category: str,
+        available_engines: set[str],
+        request: SearchRequest,
+    ) -> list[str]:
+        selected = [name for name in groups.get("general") if name in available_engines]
+        for group_name in ROUTE_SPECIALIZED_GROUPS.get(category, []):
+            selected = self._merge(selected, [name for name in groups.get(group_name) if name in available_engines])
+        return self._append_rule_engines(request, selected, available_engines, category=category)
 
     def _append_rule_engines(self, request: SearchRequest, engine_names: list[str], available_engines: set[str], *, category: str) -> list[str]:
         lowered = request.query.lower()

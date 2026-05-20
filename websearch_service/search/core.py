@@ -6,14 +6,14 @@ import time
 from collections.abc import Iterable
 from urllib.parse import urlparse
 
-from app.config import Settings, get_settings
-from app.search.engines import build_engine_registry
-from app.search.normalize import canonical_result_key, looks_low_quality, normalize_url
-from app.search.planner import RulePlanner
-from app.search.privacy import build_async_client, choose_user_agent
-from app.search.rank import has_meaningful_overlap, score_hit
-from app.search.types import ParsedUrlResult, RawSearchHit, SearchRequest, SearchResponse, SearchResult, WebDocument
-from app.search.url_tools import get_url
+from websearch_service.config import Settings, get_settings
+from websearch_service.search.engines import build_engine_registry
+from websearch_service.search.normalize import canonical_result_key, looks_low_quality, normalize_url
+from websearch_service.search.planner import RulePlanner
+from websearch_service.search.privacy import build_async_client, choose_user_agent
+from websearch_service.search.rank import has_meaningful_overlap, score_hit
+from websearch_service.search.types import ParsedUrlResult, RawSearchHit, SearchRequest, SearchResponse, SearchResult, WebDocument
+from websearch_service.search.url_tools import get_url
 
 
 class SearchClient:
@@ -85,15 +85,16 @@ class SearchClient:
                 planner_query=decision.normalized_query,
             )
         engine_names = decision.engines
-        hits, planned_names, failures = await self._collect_hits(planning_request, self._prioritize_engines(engine_names))
+        hits, planned_names, failures, diagnostics = await self._collect_hits(planning_request, self._prioritize_engines(engine_names))
         merged = self._merge_hits(planning_request, hits)
         if self._needs_quality_fallback(planning_request, merged):
             fallback_engines = self.planner.fallback_engines(planning_request, planned_names, set(self.engines))
             if fallback_engines:
-                fallback_hits, fallback_names, fallback_failures = await self._collect_hits(planning_request, self._prioritize_engines(fallback_engines))
+                fallback_hits, fallback_names, fallback_failures, fallback_diagnostics = await self._collect_hits(planning_request, self._prioritize_engines(fallback_engines))
                 hits.extend(fallback_hits)
                 planned_names.extend([name for name in fallback_names if name not in planned_names])
                 failures.update(fallback_failures)
+                diagnostics.update(fallback_diagnostics)
                 merged = self._merge_hits(planning_request, hits)
         results = merged
         if request.resolve_urls:
@@ -111,11 +112,17 @@ class SearchClient:
             },
             engine_health=self._engine_health_snapshot(),
             engine_failures=failures,
+            engine_diagnostics=diagnostics,
         )
 
-    async def _collect_hits(self, request: SearchRequest, engine_names: list[str]) -> tuple[list[RawSearchHit], list[str], dict[str, str]]:
+    async def _collect_hits(
+        self,
+        request: SearchRequest,
+        engine_names: list[str],
+    ) -> tuple[list[RawSearchHit], list[str], dict[str, str], dict[str, dict[str, object]]]:
         user_agent = choose_user_agent(self.settings.user_agent, self.settings.search_user_agent_rotation)
         failures: dict[str, str] = {}
+        diagnostics: dict[str, dict[str, object]] = {}
         async with build_async_client(
             timeout_seconds=self.settings.search_engine_timeout_seconds,
             follow_redirects=True,
@@ -138,12 +145,20 @@ class SearchClient:
             if isinstance(result, Exception):
                 failures[name] = str(result)
                 self._record_failure(name, str(result))
+                diagnostics[name] = {
+                    "raw_hits": 0,
+                    "filtered_hits": 0,
+                    "dropped_hits": 0,
+                    "error": str(result),
+                }
                 continue
-            self._record_success(name, len(result))
-            hits.extend(result)
-        return hits, planned_names, failures
+            filtered_hits, engine_diag = result
+            diagnostics[name] = engine_diag
+            self._record_success(name, len(filtered_hits))
+            hits.extend(filtered_hits)
+        return hits, planned_names, failures, diagnostics
 
-    async def _run_engine(self, engine, client, request: SearchRequest) -> list[RawSearchHit]:
+    async def _run_engine(self, engine, client, request: SearchRequest) -> tuple[list[RawSearchHit], dict[str, object]]:
         raw_hits = await engine.search(client, request)
         hits: list[RawSearchHit] = []
         for hit in raw_hits:
@@ -157,7 +172,12 @@ class SearchClient:
             _, title_key = canonical_result_key(hit.canonical_url or hit.url, hit.title)
             hit.title_signature = title_key
             hits.append(hit)
-        return hits
+        return hits, {
+            "raw_hits": len(raw_hits),
+            "filtered_hits": len(hits),
+            "dropped_hits": max(0, len(raw_hits) - len(hits)),
+            "error": None,
+        }
 
     def _merge_hits(self, request: SearchRequest, hits: Iterable[RawSearchHit]) -> list[SearchResult]:
         merged: dict[str, RawSearchHit] = {}
@@ -290,7 +310,7 @@ class SearchClient:
         return max(1.0, self.settings.search_ban_seconds)
 
     def _record_success(self, name: str, hit_count: int) -> None:
-        self._engine_successes[name] = self._engine_successes.get(name, 0) + max(1, hit_count)
+        self._engine_successes[name] = self._engine_successes.get(name, 0) + max(0, hit_count)
 
     def _record_failure(self, name: str, message: str) -> None:
         self._engine_failures[name] = self._engine_failures.get(name, 0) + 1

@@ -6,7 +6,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-from app.search.types import RawSearchHit, SearchCategory
+from websearch_service.search.types import RawSearchHit, SearchCategory
 
 
 TOKEN_RE = re.compile(r"[a-z0-9]{2,}")

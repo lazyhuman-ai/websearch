@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import httpx
 
-from app.search.engines.base import SearchEngine
-from app.search.engines.common import parse_rss, time_suffix
-from app.search.types import RawSearchHit, SearchRequest
+from websearch_service.search.engines.base import SearchEngine
+from websearch_service.search.engines.common import parse_rss, time_suffix
+from websearch_service.search.types import RawSearchHit, SearchRequest
 
 
 class GoogleNewsRssEngine(SearchEngine):

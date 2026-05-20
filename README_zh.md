@@ -109,50 +109,55 @@
 
 ## Agent API
 
-为了方便直接给 Agent Framework 调用，项目现在额外提供了两个轻量包装函数，定义在 [app/search/agent_tools.py](/Users/tongbu/lazyhuman-ai/websearch/app/search/agent_tools.py)：
+当前主要面向 Agent 的入口是：
 
 - `web_search`
-  负责搜索并返回结构化候选结果，重点是 `title`、`url`、`snippet`、`engine`、`score`。
-- `web_extract`
-  负责对一组 URL 做解析和正文提取，返回 `final_url`、`title`、`content_text`、`content_markdown` 等字段。
+  负责搜索并返回统一结果项，例如 `title`、`url`、`snippet`、`engine`、`rank`、`published_at`、`domain`、`score`。
+- `web_fetch`
+  负责抓取单个 URL，并返回 cleaned text、title、excerpt 和 metadata。
 
 最小示例：
 
 ```python
-from app.search import web_extract, web_search
+from websearch_service import web_fetch, web_search
 
 search_payload = web_search(
     "today's news",
-    category="news",
-    max_results=5,
-    max_engine_requests=1,
+    count=0,
+    freshness="day",
 )
 
-urls = [item["url"] for item in search_payload["results"][:3]]
-extract_payload = web_extract(urls)
+fetch_payload = web_fetch(search_payload[0]["url"])
 ```
 
-这两个函数的定位是：
+另外还有一个更适合调试的包装：
+
+- `web_search_payload`
+  返回完整 payload，包括 `used_engines`、`failed_engines`、`engine_failures`、`engine_diagnostics`、`planner`、`engine_health` 和 `results`。
+
+这些函数的定位是：
 
 - 作为 Agent Tool 的直接调用入口
 - 保持返回结构稳定、轻量、易于序列化
 - 不替代底层 `SearchClient`
 
-如果你想更直接接到支持 tool calling 的 runtime，现在项目还提供了标准化 schema 和统一 dispatcher，定义在 [app/search/tool_schemas.py](/Users/tongbu/lazyhuman-ai/websearch/app/search/tool_schemas.py)：
+如果你想更直接接到支持 tool calling 的 runtime，现在项目还提供了标准化 schema 和统一 dispatcher，定义在 [websearch_service/search/tool_schemas.py](/Users/tongbu/lazyhuman-ai/websearch/websearch_service/search/tool_schemas.py)：
 
 - `AGENT_TOOL_SCHEMAS`
   一组可直接注册到 tool registry 的 schema
 - `WEB_SEARCH_TOOL`
   `web_search` 的单独定义
+- `WEB_FETCH_TOOL`
+  `web_fetch` 的单独定义
 - `WEB_EXTRACT_TOOL`
-  `web_extract` 的单独定义
+  一个为了兼容而保留的 `web_fetch` 批量包装
 - `call_agent_tool(name, arguments)`
   按工具名统一分发调用
 
 最小示例：
 
 ```python
-from app.search import AGENT_TOOL_SCHEMAS, call_agent_tool
+from websearch_service.search import AGENT_TOOL_SCHEMAS, call_agent_tool
 
 tool_schemas = AGENT_TOOL_SCHEMAS
 
@@ -160,9 +165,8 @@ payload = call_agent_tool(
     "web_search",
     {
         "query": "today's news",
-        "category": "news",
-        "max_results": 5,
-        "max_engine_requests": 1,
+        "count": 0,
+        "freshness": "day",
     },
 )
 ```
@@ -211,7 +215,7 @@ payload = call_agent_tool(
 
 ### Agent 集成
 
-- 提供更清晰的 `web_search` / `web_extract` 工具接口
+- 提供更清晰的 `web_search` / `web_fetch` 工具接口
 - 增加与常见 agent runtime 的集成示例
 - 更清楚地区分 search、fetch、browser escalation 三条路径
 - 提供更完善的结构化 telemetry 和调试信息
@@ -226,13 +230,18 @@ payload = call_agent_tool(
 ## 项目结构
 
 ```text
-app/
+websearch_service/
+  app.py
   config.py
+  fetch.py
+  schemas.py
   search/
+    agent_tools.py
     core.py
     planner.py
     llm_planner.py
     engine_config.py
+    tool_schemas.py
     url_tools.py
     search_engines.yaml
     engines/
@@ -258,25 +267,25 @@ python3 scripts/search_web.py "what is CRDT" --pretty
 新闻搜索：
 
 ```bash
-python3 scripts/search_web.py "today's news" --category news --pretty
+python3 scripts/search_web.py "today's news" --freshness day --pretty
 ```
 
-代码问题搜索：
+指定 provider：
 
 ```bash
-python3 scripts/search_web.py "GitHub Actions permission denied shell script" --category code --pretty
+python3 scripts/search_web.py "GitHub Actions permission denied shell script" --providers bing,duckduckgo --pretty
 ```
 
-站点限定搜索：
+搜索后抓取第一条结果：
 
 ```bash
-python3 scripts/search_web.py "asyncio taskgroup" --site docs.python.org --pretty
+python3 scripts/search_web.py "OpenAI API responses" --fetch-top --pretty
 ```
 
-附带正文抓取：
+直接抓取指定 URL：
 
 ```bash
-python3 scripts/search_web.py "OpenAI API responses" --read --pretty
+python3 scripts/search_web.py "OpenAI API responses" --fetch-url https://openai.com/api/ --pretty
 ```
 
 批量 smoke test：
@@ -286,7 +295,7 @@ python3 scripts/batch_test_search.py --pretty
 ```
 ## 配置方式
 
-默认配置文件在 [app/search/search_engines.yaml](./app/search/search_engines.yaml)。
+默认配置文件在 [websearch_service/search/search_engines.yaml](./websearch_service/search/search_engines.yaml)。
 
 它主要控制三类内容：
 
@@ -314,34 +323,37 @@ engine_headers:
 
 常用参数包括：
 
-- `--category`
 - `--language`
-- `--site`
-- `--time-range`
-- `--max-results`
-  表示每个上游搜索请求希望拿到多少条结果，不是最终返回上限。
-- `--max-engine-requests`
-  表示每个 engine 最多发多少次分页请求。
-- `--engine-config`
-- `--resolve-urls` / `--no-resolve-urls`
-- `--include-url-content` / `--no-include-url-content`
-- `--read`
+- `--freshness`
+- `--count`
+  表示每个 engine 请求多少条候选结果。设为 `0`，或者在 Python API 中省略，表示返回完整聚合排序结果。
+- `--providers`
+  可选的 provider 覆盖列表，例如 `bing,duckduckgo`。
+- `--fetch-url`
+- `--fetch-top`
+- `--log-file`
+- `--clean-log-file`
 
 ## 输出格式
 
 CLI 返回 JSON，核心字段包括：
 
 - `query`
-- `request`
+- `count`
+- `requested_providers`
+- `providers`
 - `used_engines`
+- `failed_providers`
+- `failed_engines`
+- `engine_diagnostics`
 - `results`
 - `planner`
 - `engine_health`
 - `engine_failures`
 
-启用 `--read` 后，还会附带：
+启用 `--fetch-url` 或 `--fetch-top` 后，还会附带：
 
-- `documents`
+- `fetched`
 
 ## 日志
 
@@ -363,6 +375,7 @@ CLI 返回 JSON，核心字段包括：
 - HTML 搜索源容易受页面结构变化影响
 - 某些搜索源会触发 challenge、429、地区限制或异常跳转
 - Google News 经常返回包装链接而不是源站直链
+- 在某些环境里，`google_web` 和 `brave_web` 可能会被 challenge page 阻断，即使 `bing_web`、`duckduckgo_lite`、`google_news_rss` 仍然可用
 - 正文提取是 best-effort，不等价于浏览器真实渲染
 - 某些页面天然更适合 Browser Tool，而不是 HTTP fetch + extraction
 - 这个项目更重视可控性和可解释性，不追求对所有 query 的完美 recall

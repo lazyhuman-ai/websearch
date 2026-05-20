@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import httpx
 
-from app.search.engines.base import SearchEngine
-from app.search.engines.common import generic_hits
-from app.search.types import RawSearchHit, SearchAdapterError, SearchRequest
+from websearch_service.search.engines.base import SearchEngine
+from websearch_service.search.engines.common import parse_ddg_lite_hits
+from websearch_service.search.types import RawSearchHit, SearchAdapterError, SearchRequest
 
 
 class DuckDuckGoLiteEngine(SearchEngine):
@@ -27,5 +27,4 @@ class DuckDuckGoLiteEngine(SearchEngine):
     def parse(self, response: httpx.Response, request: SearchRequest) -> list[RawSearchHit]:
         if "anomaly-modal" in response.text or "Unfortunately, bots use DuckDuckGo too." in response.text:
             raise SearchAdapterError(f"{self.name} blocked_challenge")
-        hits = generic_hits(response.text, self.name, limit=request.max_results)
-        return [hit for hit in hits if "duckduckgo.com/" not in hit.url][: request.max_results]
+        return parse_ddg_lite_hits(response.text, self.name, limit=request.max_results)

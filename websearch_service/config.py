@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = Field(default=900, validation_alias=AliasChoices("CACHE_TTL_SECONDS"))
     max_document_chars: int = Field(default=12000, validation_alias=AliasChoices("MAX_DOCUMENT_CHARS"))
     search_engine_config_path: str = Field(
-        default=str(Path("app/search/search_engines.yaml")),
+        default=str(Path("websearch_service/search/search_engines.yaml")),
         validation_alias=AliasChoices("SEARCH_ENGINE_CONFIG_PATH"),
     )
     llm_planner_enabled: bool = Field(default=True, validation_alias=AliasChoices("LLM_PLANNER_ENABLED"))

@@ -6,8 +6,8 @@ import random
 
 import httpx
 
-from app.search.engine_config import load_engine_config
-from app.search.types import RawSearchHit, SearchAdapterError, SearchRequest
+from websearch_service.search.engine_config import load_engine_config
+from websearch_service.search.types import RawSearchHit, SearchAdapterError, SearchRequest
 
 
 class SearchEngine(ABC):

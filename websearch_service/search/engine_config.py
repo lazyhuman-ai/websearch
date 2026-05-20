@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from app.config import get_settings
+from websearch_service.config import get_settings
 
 
 DEFAULT_GROUPS = {

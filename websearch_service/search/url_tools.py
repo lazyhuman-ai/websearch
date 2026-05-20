@@ -7,9 +7,9 @@ from urllib.parse import parse_qsl, urlparse
 import httpx
 import trafilatura
 
-from app.config import Settings, get_settings
-from app.search.normalize import clean_text, normalize_url
-from app.search.types import ParsedUrlResult
+from websearch_service.config import Settings, get_settings
+from websearch_service.search.normalize import clean_text, normalize_url
+from websearch_service.search.types import ParsedUrlResult
 
 
 CANONICAL_URL_RE = re.compile(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)["\']', re.I)

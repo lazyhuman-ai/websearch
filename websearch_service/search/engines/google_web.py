@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import httpx
 
-from app.search.engines.base import SearchEngine
-from app.search.engines.common import GOOGLE_FALLBACK_RE, GOOGLE_LINK_RE, clean_snippet, strip_tags, time_suffix
-from app.search.normalize import clean_text
-from app.search.types import RawSearchHit, SearchAdapterError, SearchRequest
+from websearch_service.search.engines.base import SearchEngine
+from websearch_service.search.engines.common import GOOGLE_FALLBACK_RE, GOOGLE_LINK_RE, clean_snippet, strip_tags, time_suffix
+from websearch_service.search.normalize import clean_text
+from websearch_service.search.types import RawSearchHit, SearchAdapterError, SearchRequest
 
 
 class GoogleWebEngine(SearchEngine):

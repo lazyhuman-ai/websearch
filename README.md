@@ -109,28 +109,31 @@ Main components:
 
 ## Agent API
 
-To make direct integration with agent frameworks easier, the project now also provides two lightweight wrapper functions in [app/search/agent_tools.py](/Users/tongbu/lazyhuman-ai/websearch/app/search/agent_tools.py):
+The primary agent-facing entrypoints are:
 
 - `web_search`
-  Runs search and returns structured candidate results, mainly `title`, `url`, `snippet`, `engine`, and `score`.
-- `web_extract`
-  Resolves and extracts readable content for a list of URLs, returning fields such as `final_url`, `title`, `content_text`, and `content_markdown`.
+  Runs search and returns normalized result items such as `title`, `url`, `snippet`, `engine`, `rank`, `published_at`, `domain`, and `score`.
+- `web_fetch`
+  Fetches one URL and returns cleaned text, title, excerpt, and metadata.
 
 Minimal example:
 
 ```python
-from app.search import web_extract, web_search
+from websearch_service import web_fetch, web_search
 
 search_payload = web_search(
     "today's news",
-    category="news",
-    max_results=5,
-    max_engine_requests=1,
+    count=0,
+    freshness="day",
 )
 
-urls = [item["url"] for item in search_payload["results"][:3]]
-extract_payload = web_extract(urls)
+fetch_payload = web_fetch(search_payload[0]["url"])
 ```
+
+There is also a structured debug wrapper:
+
+- `web_search_payload`
+  Returns the full payload including `used_engines`, `failed_engines`, `engine_failures`, `engine_diagnostics`, `planner`, `engine_health`, and `results`.
 
 These wrappers are intended to:
 
@@ -138,21 +141,23 @@ These wrappers are intended to:
 - keep the returned structure stable, lightweight, and easy to serialize
 - complement rather than replace the lower-level `SearchClient`
 
-If you want something even closer to a runtime-ready tool interface, the project now also provides standardized schemas and a unified dispatcher in [app/search/tool_schemas.py](/Users/tongbu/lazyhuman-ai/websearch/app/search/tool_schemas.py):
+If you want something closer to a runtime-ready tool interface, the project also provides standardized schemas and a unified dispatcher in [websearch_service/search/tool_schemas.py](/Users/tongbu/lazyhuman-ai/websearch/websearch_service/search/tool_schemas.py):
 
 - `AGENT_TOOL_SCHEMAS`
   A list of schemas that can be registered directly in a tool registry
 - `WEB_SEARCH_TOOL`
   The standalone definition for `web_search`
+- `WEB_FETCH_TOOL`
+  The standalone definition for `web_fetch`
 - `WEB_EXTRACT_TOOL`
-  The standalone definition for `web_extract`
+  A backward-compatible batch wrapper around `web_fetch`
 - `call_agent_tool(name, arguments)`
   A unified dispatcher that executes a tool call by name
 
 Minimal example:
 
 ```python
-from app.search import AGENT_TOOL_SCHEMAS, call_agent_tool
+from websearch_service.search import AGENT_TOOL_SCHEMAS, call_agent_tool
 
 tool_schemas = AGENT_TOOL_SCHEMAS
 
@@ -160,9 +165,8 @@ payload = call_agent_tool(
     "web_search",
     {
         "query": "today's news",
-        "category": "news",
-        "max_results": 5,
-        "max_engine_requests": 1,
+        "count": 0,
+        "freshness": "day",
     },
 )
 ```
@@ -211,7 +215,7 @@ This project will continue to be improved into a backend that is more suitable f
 
 ### Agent Integration
 
-- expose cleaner `web_search` / `web_extract` tool interfaces
+- expose cleaner `web_search` / `web_fetch` tool interfaces
 - add integration examples for common agent runtimes
 - separate search, fetch, and browser escalation paths more clearly
 - provide better structured telemetry and debugging information
@@ -226,13 +230,18 @@ This project will continue to be improved into a backend that is more suitable f
 ## Repository Layout
 
 ```text
-app/
+websearch_service/
+  app.py
   config.py
+  fetch.py
+  schemas.py
   search/
+    agent_tools.py
     core.py
     planner.py
     llm_planner.py
     engine_config.py
+    tool_schemas.py
     url_tools.py
     search_engines.yaml
     engines/
@@ -258,25 +267,25 @@ python3 scripts/search_web.py "what is CRDT" --pretty
 News search:
 
 ```bash
-python3 scripts/search_web.py "today's news" --category news --pretty
+python3 scripts/search_web.py "today's news" --freshness day --pretty
 ```
 
-Code-oriented search:
+Provider override:
 
 ```bash
-python3 scripts/search_web.py "GitHub Actions permission denied shell script" --category code --pretty
+python3 scripts/search_web.py "GitHub Actions permission denied shell script" --providers bing,duckduckgo --pretty
 ```
 
-Site-restricted search:
+Fetch the top result after search:
 
 ```bash
-python3 scripts/search_web.py "asyncio taskgroup" --site docs.python.org --pretty
+python3 scripts/search_web.py "OpenAI API responses" --fetch-top --pretty
 ```
 
-With readable content extraction:
+Fetch a specific URL directly:
 
 ```bash
-python3 scripts/search_web.py "OpenAI API responses" --read --pretty
+python3 scripts/search_web.py "OpenAI API responses" --fetch-url https://openai.com/api/ --pretty
 ```
 
 Batch smoke test:
@@ -287,7 +296,7 @@ python3 scripts/batch_test_search.py --pretty
 
 ## Configuration
 
-The default configuration file is [app/search/search_engines.yaml](./app/search/search_engines.yaml).
+The default configuration file is [websearch_service/search/search_engines.yaml](./websearch_service/search/search_engines.yaml).
 
 It mainly controls three things:
 
@@ -315,34 +324,37 @@ engine_headers:
 
 Common CLI parameters:
 
-- `--category`
 - `--language`
-- `--site`
-- `--time-range`
-- `--max-results`
-  How many results to request per upstream search request, not the final result cap.
-- `--max-engine-requests`
-  The maximum number of paginated requests to send to each engine.
-- `--engine-config`
-- `--resolve-urls` / `--no-resolve-urls`
-- `--include-url-content` / `--no-include-url-content`
-- `--read`
+- `--freshness`
+- `--count`
+  Per-engine fetch count. Use `0` or omit it in the Python API to return the full aggregated ranked list.
+- `--providers`
+  Optional comma-separated provider override such as `bing,duckduckgo`.
+- `--fetch-url`
+- `--fetch-top`
+- `--log-file`
+- `--clean-log-file`
 
 ## Output Shape
 
 The CLI returns JSON with fields such as:
 
 - `query`
-- `request`
+- `count`
+- `requested_providers`
+- `providers`
 - `used_engines`
+- `failed_providers`
+- `failed_engines`
+- `engine_diagnostics`
 - `results`
 - `planner`
 - `engine_health`
 - `engine_failures`
 
-When `--read` is enabled, the output also includes:
+When `--fetch-url` or `--fetch-top` is used, the output also includes:
 
-- `documents`
+- `fetched`
 
 ## Logging
 
@@ -364,6 +376,7 @@ Default paths:
 - HTML-based search engines are sensitive to markup changes
 - some engines may trigger challenges, `429`, geo restrictions, or unexpected redirects
 - Google News often returns wrapper links instead of publisher-direct URLs
+- `google_web` and `brave_web` may be blocked by challenge pages in some environments even when `bing_web`, `duckduckgo_lite`, or `google_news_rss` still work
 - readable content extraction is best-effort and is not equivalent to browser rendering
 - some pages are naturally better handled by a browser tool than by HTTP fetch plus extraction
 - this project prioritizes controllability and inspectability over perfect recall

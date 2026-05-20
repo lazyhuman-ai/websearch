@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from base64 import b64decode, urlsafe_b64decode
 from html import unescape
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -25,16 +26,50 @@ NON_WORD_RE = re.compile(r"[^a-z0-9]+")
 def clean_text(text: str) -> str:
     return MULTI_SPACE_RE.sub(" ", unescape(text or "")).strip()
 
+
+def _normalize_relative_url(url: str) -> str:
+    if url.startswith("//"):
+        return f"https:{url}"
+    return url
+
+
+def _decode_bing_redirect_target(value: str) -> str:
+    candidate = (value or "").strip()
+    if not candidate:
+        return ""
+    if candidate.startswith(("http://", "https://", "//")):
+        return _normalize_relative_url(candidate)
+    if candidate.startswith("a1"):
+        candidate = candidate[2:]
+    candidate = candidate.replace("-", "+").replace("_", "/")
+    padding = "=" * (-len(candidate) % 4)
+    for decoder in (b64decode, urlsafe_b64decode):
+        try:
+            decoded = decoder(candidate + padding).decode("utf-8", errors="ignore").strip()
+        except Exception:
+            continue
+        if decoded.startswith(("http://", "https://", "//")):
+            return _normalize_relative_url(decoded)
+    return ""
+
+
 def unwrap_redirect_url(url: str) -> str:
     if not url:
         return ""
-    parsed = urlparse(url)
+    normalized_url = _normalize_relative_url(url.strip())
+    parsed = urlparse(normalized_url)
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
     for key in UNWRAP_KEYS:
         target = query.get(key)
-        if target and target.startswith(("http://", "https://")):
-            return target
-    return url
+        if not target:
+            continue
+        if target.startswith(("http://", "https://", "//")):
+            return _normalize_relative_url(target)
+        if key == "u":
+            decoded_target = _decode_bing_redirect_target(target)
+            if decoded_target:
+                return decoded_target
+    return normalized_url
 
 
 def strip_tracking_params(url: str) -> str:

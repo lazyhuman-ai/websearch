@@ -4,10 +4,10 @@ import xml.etree.ElementTree as ET
 
 import httpx
 
-from app.search.engines.base import SearchEngine
-from app.search.engines.common import ARXIV_NS, clean_snippet, parse_iso_datetime
-from app.search.normalize import clean_text
-from app.search.types import RawSearchHit, SearchRequest
+from websearch_service.search.engines.base import SearchEngine
+from websearch_service.search.engines.common import ARXIV_NS, clean_snippet, parse_iso_datetime
+from websearch_service.search.normalize import clean_text
+from websearch_service.search.types import RawSearchHit, SearchRequest
 
 
 class ArxivEngine(SearchEngine):

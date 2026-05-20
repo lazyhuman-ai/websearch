@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 import httpx
 
-from app.config import Settings
-from app.search.types import SearchRequest
+from websearch_service.config import Settings
+from websearch_service.search.types import SearchRequest
 
 
 JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
@@ -53,16 +53,8 @@ class LLMPlanner:
         category = str(payload.get("category") or default_category).strip().lower()
         if category not in VALID_CATEGORIES:
             category = default_category
-        requested_engines = payload.get("engines")
-        engines = [str(name).strip() for name in requested_engines if str(name).strip() in available_engines] if isinstance(requested_engines, list) else []
-        if not engines:
-            base_engines = [name for name in engine_groups.get("general", []) if name in available_engines]
-            specialized_engines = [name for name in engine_groups.get(category, []) if name in available_engines] if category != "general" else []
-            engines = self._merge_engines(base_engines, specialized_engines)
-        if not engines:
-            return None
         reason = str(payload.get("reason") or "")
-        return PlannerDecision(engines=engines, normalized_query=normalized_query, category=category, used_llm=True, reason=reason)
+        return PlannerDecision(engines=[], normalized_query=normalized_query, category=category, used_llm=True, reason=reason)
 
     def _call_llm(
         self,
@@ -79,9 +71,9 @@ class LLMPlanner:
             "Return strict JSON only. "
             "You plan web search. "
             "Clean the query for search quality. "
-            "Use broad web engines as the base for all searches. "
-            "Add specialized engines only for academic, code, reference, or news queries. "
-            "Do not invent engine names."
+            "Choose the best route category for the query. "
+            "Do not choose engines directly. "
+            "The runtime will always attach a fixed multi-engine route for the chosen category."
         )
         user_prompt = json.dumps(
             {
@@ -101,7 +93,6 @@ class LLMPlanner:
                 "response_schema": {
                     "normalized_query": "string",
                     "category": "general|news|reference|academic|code",
-                    "engines": ["engine_name"],
                     "reason": "short string",
                 },
             },
@@ -217,13 +208,6 @@ class LLMPlanner:
                 if depth == 0:
                     return content[start : index + 1]
         return content
-
-    def _merge_engines(self, base: list[str], extra: list[str]) -> list[str]:
-        merged = list(base)
-        for name in extra:
-            if name not in merged:
-                merged.append(name)
-        return merged
 
     def _extract_content(self, payload: dict[str, object]) -> str:
         if isinstance(payload.get("output_text"), str):
