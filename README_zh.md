@@ -173,6 +173,15 @@ scripts/
 - 需要登录或强前端渲染的网站更适合交给 Browser Tool。
 - 这个项目优先追求透明、可控和易修改，不追求完美 recall。
 
+## 后续更新方向
+
+这个项目会继续围绕几个方向迭代：
+
+- 更稳健、更鲁棒的 search 和 fetch，包括更好的重试、parser 兼容性、redirect 处理，以及 provider 失败时的降级策略。
+- 支持更多搜索提供商，覆盖通用搜索，以及 news、academic、code、docs、structured knowledge 等更专门的数据源。
+- 加入更合理的 ranking 机制，从当前轻量 heuristic 逐步升级为结合来源质量、时效性和多引擎共识的排序。
+- 加入更完整的 LLM 支持，包括 query planning、route selection、query rewriting、结果检查和 provider fallback 决策。
+
 ## License
 
 如果仓库包含 License 文件，请以该文件为准。

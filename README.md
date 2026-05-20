@@ -173,6 +173,15 @@ scripts/
 - Login-only or heavily client-rendered pages should be handled by a browser tool.
 - The project prioritizes transparency and hackability over perfect recall.
 
+## Future Work
+
+This project will keep evolving in a few focused directions:
+
+- More robust search and fetch behavior, including better retries, parser resilience, redirect handling, and degradation when providers fail.
+- More search providers, covering both general search and specialized sources for news, academic papers, code, docs, and structured knowledge.
+- Better ranking, moving beyond the current lightweight heuristic toward source-aware, freshness-aware, and consensus-aware result scoring.
+- Fuller LLM support, including query planning, route selection, query rewriting, result inspection, and provider-specific fallback decisions.
+
 ## License
 
 If the repository includes a license file, that file is authoritative.
