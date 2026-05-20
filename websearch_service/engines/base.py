@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import replace
-import random
 
 import httpx
 
-from websearch_service.search.engine_config import load_engine_config
-from websearch_service.search.types import RawSearchHit, SearchAdapterError, SearchRequest
+from websearch_service.headers import build_engine_headers
+from websearch_service.types import RawSearchHit, SearchAdapterError, SearchRequest
 
 
 class SearchEngine(ABC):
@@ -18,15 +17,7 @@ class SearchEngine(ABC):
         return True
 
     def build_headers(self, request: SearchRequest) -> dict[str, str]:
-        headers = {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7",
-            "Accept-Language": request.language,
-            "DNT": "1",
-        }
-        profiles = load_engine_config(request.engine_config_path).headers_for(self.name)
-        if profiles:
-            headers.update(random.choice(profiles))
-        return headers
+        return build_engine_headers(self.name, request)
 
     def normalize(self, hit: RawSearchHit) -> RawSearchHit:
         hit.engine = self.name
@@ -65,7 +56,8 @@ class SearchEngine(ABC):
                 if exc.response.status_code not in {408, 429, 500, 502, 503, 504} or attempt + 1 >= max_attempts:
                     raise last_error from exc
             except httpx.HTTPError as exc:
-                last_error = SearchAdapterError(f"{self.name} http_error={exc}")
+                reason = str(exc) or exc.__class__.__name__
+                last_error = SearchAdapterError(f"{self.name} http_error={reason}")
                 if attempt + 1 >= max_attempts:
                     raise last_error from exc
             except Exception as exc:  # pragma: no cover

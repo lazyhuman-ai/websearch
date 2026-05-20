@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import httpx
 
-from websearch_service.search.engines.base import SearchEngine
-from websearch_service.search.engines.common import parse_rss, time_suffix
-from websearch_service.search.types import RawSearchHit, SearchRequest
+from websearch_service.engines.base import SearchEngine
+from websearch_service.parsers.common import time_suffix
+from websearch_service.parsers.rss import RssParser
+from websearch_service.types import RawSearchHit, SearchRequest
 
 
 class GoogleNewsRssEngine(SearchEngine):
     name = "google_news_rss"
     source_type = "news"
+    parser = RssParser(name, source_type=source_type)
 
     def supports(self, request: SearchRequest) -> bool:
         return request.category in {"news", "auto"}
@@ -26,4 +28,4 @@ class GoogleNewsRssEngine(SearchEngine):
         )
 
     def parse(self, response: httpx.Response, request: SearchRequest) -> list[RawSearchHit]:
-        return parse_rss(response.text, self.name, limit=request.max_results, source_type=self.source_type)
+        return self.parser.parse(response, request)

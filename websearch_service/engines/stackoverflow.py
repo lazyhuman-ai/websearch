@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import re
+
 import httpx
 
-from websearch_service.search.engines.base import SearchEngine
-from websearch_service.search.normalize import clean_text
-from websearch_service.search.types import RawSearchHit, SearchRequest
+from websearch_service.engines.base import SearchEngine
+from websearch_service.parsers.stackoverflow import StackOverflowParser
+from websearch_service.types import RawSearchHit, SearchRequest
+
+
+PROVIDER_TOKEN_RE = re.compile(r"\b(?:github|repo|repository|repositories|stackoverflow|stack\s+overflow)\b", re.I)
 
 
 class StackOverflowEngine(SearchEngine):
     name = "stackoverflow"
     source_type = "code"
+    parser = StackOverflowParser()
 
     def supports(self, request: SearchRequest) -> bool:
         return request.category in {"code", "auto"} or any(token in request.query.lower() for token in ("error", "exception", "stack overflow", "stackoverflow", "debug", "permission denied"))
@@ -23,24 +29,15 @@ class StackOverflowEngine(SearchEngine):
                 "page": request.page,
                 "order": "desc",
                 "sort": "relevance",
-                "q": request.effective_query(),
+                "q": self._provider_query(request),
                 "filter": "default",
             },
             headers=self.build_headers(request),
         )
 
     def parse(self, response: httpx.Response, request: SearchRequest) -> list[RawSearchHit]:
-        payload = response.json()
-        items = payload.get("items", []) if isinstance(payload, dict) else []
-        hits: list[RawSearchHit] = []
-        for item in items:
-            url = clean_text(str(item.get("link") or ""))
-            title = clean_text(str(item.get("title") or ""))
-            tags = item.get("tags") or []
-            score = item.get("score")
-            snippet = "Tags: " + ", ".join(tags[:5]) if tags else ""
-            if score is not None:
-                snippet = f"{snippet} | Score: {score}".strip(" |")
-            if url and title:
-                hits.append(RawSearchHit(title=title, url=url, snippet=snippet, source_type=self.source_type))
-        return hits[: request.max_results]
+        return self.parser.parse(response, request)
+
+    def _provider_query(self, request: SearchRequest) -> str:
+        query = PROVIDER_TOKEN_RE.sub(" ", request.effective_query())
+        return " ".join(query.split()) or request.effective_query()

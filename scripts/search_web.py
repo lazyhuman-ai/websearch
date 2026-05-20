@@ -13,6 +13,39 @@ if str(ROOT) not in sys.path:
 from scripts.logging_utils import build_file_logger, log_json, log_section
 
 
+def fetch_result_items(results: object, web_fetch: object, *, limit: int = 0) -> list[dict[str, object]]:
+    if not isinstance(results, list):
+        return []
+    fetched_items: list[dict[str, object]] = []
+    selected = results if limit <= 0 else results[:limit]
+    for index, item in enumerate(selected, start=1):
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or "").strip()
+        if not url:
+            continue
+        try:
+            fetched = web_fetch(url)  # type: ignore[operator]
+        except Exception as exc:
+            fetched = {
+                "url": url,
+                "title": str(item.get("title") or ""),
+                "text": "",
+                "excerpt": "",
+                "metadata": {"domain": str(item.get("domain") or ""), "error": str(exc)},
+            }
+        fetched_items.append(
+            {
+                "rank": item.get("rank", index),
+                "source_title": item.get("title", ""),
+                "source_url": url,
+                "source_engine": item.get("engine", ""),
+                "fetch": fetched,
+            }
+        )
+    return fetched_items
+
+
 def build_payload(args: argparse.Namespace) -> dict[str, object]:
     try:
         from websearch_service import web_fetch, web_search_payload
@@ -34,6 +67,11 @@ def build_payload(args: argparse.Namespace) -> dict[str, object]:
     results = payload.get("results", [])
     if args.fetch_url:
         payload["fetched"] = web_fetch(args.fetch_url)
+    elif args.fetch_all:
+        fetched_results = fetch_result_items(results, web_fetch, limit=max(0, args.fetch_limit))
+        payload["fetched_results"] = fetched_results
+        if fetched_results:
+            payload["fetched"] = fetched_results[0]["fetch"]
     elif args.fetch_top and results:
         top_item = results[0] if isinstance(results, list) and results else {}
         top_url = str(top_item.get("url") or "").strip() if isinstance(top_item, dict) else ""
@@ -70,6 +108,22 @@ def build_clean_log(payload: dict[str, object]) -> str:
             lines.append("content:")
             lines.append(content or "<empty>")
             lines.append("")
+    fetched_results = payload.get("fetched_results")
+    if isinstance(fetched_results, list):
+        for item in fetched_results:
+            if not isinstance(item, dict):
+                continue
+            fetched_item = item.get("fetch")
+            if not isinstance(fetched_item, dict):
+                continue
+            url = str(fetched_item.get("url") or item.get("source_url") or "").strip()
+            content = str(fetched_item.get("text") or fetched_item.get("excerpt") or "").strip()
+            title = str(fetched_item.get("title") or item.get("source_title") or "").strip()
+            lines.append(f"[fetched result {item.get('rank', '')}]")
+            lines.append(f"url: {url}")
+            lines.append("content:")
+            lines.append(content or title or "<empty>")
+            lines.append("")
     return "\n".join(lines).strip()
 
 
@@ -93,6 +147,8 @@ def main() -> None:
     parser.add_argument("--providers", default="", help="Comma-separated provider override list")
     parser.add_argument("--fetch-url", default="", help="Optional URL to fetch after search")
     parser.add_argument("--fetch-top", action="store_true", help="Fetch the top search result after search")
+    parser.add_argument("--fetch-all", action="store_true", help="Fetch every returned search result after search")
+    parser.add_argument("--fetch-limit", type=int, default=0, help="Maximum results to fetch with --fetch-all. Use 0 for all returned results.")
     parser.add_argument("--log-file", default="logs/search_web.log", help="Path to append raw JSON logs")
     parser.add_argument("--clean-log-file", default="logs/search_web.clean.log", help="Path to append url + cleaned content logs")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")

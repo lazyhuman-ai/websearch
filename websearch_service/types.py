@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from dataclasses import asdict, dataclass, field
+from dataclasses import replace
 from datetime import datetime
 from typing import Literal
 
@@ -23,7 +23,6 @@ class SearchRequest:
     site: str | None = None
     resolve_urls: bool = True
     include_url_content: bool = True
-    engine_config_path: str | None = None
     planner_query: str | None = None
 
     def effective_query(self) -> str:

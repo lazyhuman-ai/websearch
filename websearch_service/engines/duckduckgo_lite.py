@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import httpx
 
-from websearch_service.search.engines.base import SearchEngine
-from websearch_service.search.engines.common import parse_ddg_lite_hits
-from websearch_service.search.types import RawSearchHit, SearchAdapterError, SearchRequest
+from websearch_service.engines.base import SearchEngine
+from websearch_service.parsers.duckduckgo import DuckDuckGoLiteParser
+from websearch_service.types import RawSearchHit, SearchAdapterError, SearchRequest
 
 
 class DuckDuckGoLiteEngine(SearchEngine):
     name = "duckduckgo_lite"
+    parser = DuckDuckGoLiteParser(name)
 
     def max_attempts(self, request: SearchRequest) -> int:
         return 2
@@ -27,4 +28,4 @@ class DuckDuckGoLiteEngine(SearchEngine):
     def parse(self, response: httpx.Response, request: SearchRequest) -> list[RawSearchHit]:
         if "anomaly-modal" in response.text or "Unfortunately, bots use DuckDuckGo too." in response.text:
             raise SearchAdapterError(f"{self.name} blocked_challenge")
-        return parse_ddg_lite_hits(response.text, self.name, limit=request.max_results)
+        return self.parser.parse(response, request)
