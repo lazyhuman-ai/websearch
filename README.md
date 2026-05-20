@@ -107,6 +107,72 @@ Main components:
 - `url_tools`
   Handles URL resolution and content extraction.
 
+## Agent API
+
+To make direct integration with agent frameworks easier, the project now also provides two lightweight wrapper functions in [app/search/agent_tools.py](/Users/tongbu/lazyhuman-ai/websearch/app/search/agent_tools.py):
+
+- `web_search`
+  Runs search and returns structured candidate results, mainly `title`, `url`, `snippet`, `engine`, and `score`.
+- `web_extract`
+  Resolves and extracts readable content for a list of URLs, returning fields such as `final_url`, `title`, `content_text`, and `content_markdown`.
+
+Minimal example:
+
+```python
+from app.search import web_extract, web_search
+
+search_payload = web_search(
+    "today's news",
+    category="news",
+    max_results=5,
+    max_engine_requests=1,
+)
+
+urls = [item["url"] for item in search_payload["results"][:3]]
+extract_payload = web_extract(urls)
+```
+
+These wrappers are intended to:
+
+- act as direct entrypoints for agent tools
+- keep the returned structure stable, lightweight, and easy to serialize
+- complement rather than replace the lower-level `SearchClient`
+
+If you want something even closer to a runtime-ready tool interface, the project now also provides standardized schemas and a unified dispatcher in [app/search/tool_schemas.py](/Users/tongbu/lazyhuman-ai/websearch/app/search/tool_schemas.py):
+
+- `AGENT_TOOL_SCHEMAS`
+  A list of schemas that can be registered directly in a tool registry
+- `WEB_SEARCH_TOOL`
+  The standalone definition for `web_search`
+- `WEB_EXTRACT_TOOL`
+  The standalone definition for `web_extract`
+- `call_agent_tool(name, arguments)`
+  A unified dispatcher that executes a tool call by name
+
+Minimal example:
+
+```python
+from app.search import AGENT_TOOL_SCHEMAS, call_agent_tool
+
+tool_schemas = AGENT_TOOL_SCHEMAS
+
+payload = call_agent_tool(
+    "web_search",
+    {
+        "query": "today's news",
+        "category": "news",
+        "max_results": 5,
+        "max_engine_requests": 1,
+    },
+)
+```
+
+This layer exists to make the project easier to plug into:
+
+- OpenAI-style tool calling
+- MCP-like runtimes
+- custom tool registries and routers
+
 ## Roadmap
 
 This project will continue to be improved into a backend that is more suitable for agent use.

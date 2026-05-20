@@ -107,6 +107,72 @@
 - `url_tools`
   负责 URL 解析和正文抽取。
 
+## Agent API
+
+为了方便直接给 Agent Framework 调用，项目现在额外提供了两个轻量包装函数，定义在 [app/search/agent_tools.py](/Users/tongbu/lazyhuman-ai/websearch/app/search/agent_tools.py)：
+
+- `web_search`
+  负责搜索并返回结构化候选结果，重点是 `title`、`url`、`snippet`、`engine`、`score`。
+- `web_extract`
+  负责对一组 URL 做解析和正文提取，返回 `final_url`、`title`、`content_text`、`content_markdown` 等字段。
+
+最小示例：
+
+```python
+from app.search import web_extract, web_search
+
+search_payload = web_search(
+    "today's news",
+    category="news",
+    max_results=5,
+    max_engine_requests=1,
+)
+
+urls = [item["url"] for item in search_payload["results"][:3]]
+extract_payload = web_extract(urls)
+```
+
+这两个函数的定位是：
+
+- 作为 Agent Tool 的直接调用入口
+- 保持返回结构稳定、轻量、易于序列化
+- 不替代底层 `SearchClient`
+
+如果你想更直接接到支持 tool calling 的 runtime，现在项目还提供了标准化 schema 和统一 dispatcher，定义在 [app/search/tool_schemas.py](/Users/tongbu/lazyhuman-ai/websearch/app/search/tool_schemas.py)：
+
+- `AGENT_TOOL_SCHEMAS`
+  一组可直接注册到 tool registry 的 schema
+- `WEB_SEARCH_TOOL`
+  `web_search` 的单独定义
+- `WEB_EXTRACT_TOOL`
+  `web_extract` 的单独定义
+- `call_agent_tool(name, arguments)`
+  按工具名统一分发调用
+
+最小示例：
+
+```python
+from app.search import AGENT_TOOL_SCHEMAS, call_agent_tool
+
+tool_schemas = AGENT_TOOL_SCHEMAS
+
+payload = call_agent_tool(
+    "web_search",
+    {
+        "query": "today's news",
+        "category": "news",
+        "max_results": 5,
+        "max_engine_requests": 1,
+    },
+)
+```
+
+这层接口的意义是：
+
+- 更容易直接挂到 OpenAI tool calling
+- 更容易挂到 MCP 风格 runtime
+- 更容易接到你自己的 tool registry / router
+
 ## Roadmap
 
 这个项目未来会持续把它打磨成一个更适合 Agent 使用的 Websearch Backend。
