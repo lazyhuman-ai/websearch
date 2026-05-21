@@ -181,7 +181,3 @@ scripts/
 - 支持更多搜索提供商，覆盖通用搜索，以及 news、academic、code、docs、structured knowledge 等更专门的数据源。
 - 加入更合理的 ranking 机制，从当前轻量 heuristic 逐步升级为结合来源质量、时效性和多引擎共识的排序。
 - 加入更完整的 LLM 支持，包括 query planning、route selection、query rewriting、结果检查和 provider fallback 决策。
-
-## License
-
-如果仓库包含 License 文件，请以该文件为准。
