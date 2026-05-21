@@ -181,7 +181,3 @@ This project will keep evolving in a few focused directions:
 - More search providers, covering both general search and specialized sources for news, academic papers, code, docs, and structured knowledge.
 - Better ranking, moving beyond the current lightweight heuristic toward source-aware, freshness-aware, and consensus-aware result scoring.
 - Fuller LLM support, including query planning, route selection, query rewriting, result inspection, and provider-specific fallback decisions.
-
-## License
-
-If the repository includes a license file, that file is authoritative.
